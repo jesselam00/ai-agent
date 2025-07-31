@@ -3,14 +3,13 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from functions.get_files_info import schema_get_files_info
-from functions.get_file_content import schema_get_file_content
-from functions.run_python import schema_run_python_file
-from functions.write_file import schema_write_file
-from functions.call_function import call_function
+from functions.call_function import call_function, available_functions
+from config import SYSTEM_PROMPT, MAX_ATTEMPTS
 
 def main():
-    verbose_flag = "--verbose" in sys.argv
+    load_dotenv()
+
+    verbose = "--verbose" in sys.argv
     args = []
     for arg in sys.argv[1:]:
         if not arg.startswith("--"):
@@ -22,71 +21,69 @@ def main():
         print("Example: python main.py 'How do I build a calculator app?'")
         sys.exit(1)
 
-    user_prompt = " ".join(args)
-    # TODO For now, it's hard coded to use ./calculator for the working directory
-    user_prompt += "'./calculator' is the working directory"
-    messages = [
-        types.Content(role="user", parts=[types.Part(text=user_prompt)])
-    ]
-
-    system_prompt = """
-    You are a helpful AI coding agent.
-
-    When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
-
-    - List files and directories
-    - Read file contents
-    - Execute Python files with optional arguments
-    - Write or overwrite files
-
-    All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
-    """
-    available_functions = types.Tool(
-        function_declarations=[
-            schema_get_files_info,
-            schema_get_file_content,
-            schema_run_python_file,
-            schema_write_file
-        ]
-    )
-
-    load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
+
+    user_prompt = " ".join(args)
+
+    if verbose:
+        print(f"User prompt: {user_prompt}\n")
+
+    messages = [
+        types.Content(role="user", parts=[types.Part(text=user_prompt)]),
+    ]
+
     
-    resp = generate_content(client, messages, system_prompt, available_functions)
-
-    if verbose_flag:
-        print("User prompt:", user_prompt)
-        print("Prompt tokens:", resp.usage_metadata.prompt_token_count)
-        print("Response tokens: ", resp.usage_metadata.candidates_token_count)
-
-    print("Response:")
-    if resp.text is not None:
-        print(resp.text)
-    if resp.function_calls is not None:
-        for function_call_part in resp.function_calls:
-            try:
-                content = call_function(function_call_part, verbose_flag)
-                if not verbose_flag:
-                    print(content.parts[0].function_response.response)
-                else:
-                    print(f"-> {content.parts[0].function_response.response}")
-                # print(f"Calling function: {function_call_part.name}({function_call_part.args})")
-            except Exception as e:
-                raise Exception(f"Error: {e}")
+    for i in range(MAX_ATTEMPTS):
+        try:
+            result = generate_content(client, messages, verbose)
+            if result:
+                print(result)
+                return
+        except Exception as e:
+            print(f"Error in generate_content: {e}")
+    print(f"Maximum attempts ({MAX_ATTEMPTS}) reached.")
+    sys.exit(1)
         
 
-def generate_content(client, messages, system_prompt, available_functions):
-    resp = client.models.generate_content(
-        model='gemini-2.0-flash-001', 
+def generate_content(client, messages, verbose):
+    response = client.models.generate_content(
+        model="gemini-2.0-flash-001",
         contents=messages,
         config=types.GenerateContentConfig(
-            tools=[available_functions], 
-            system_instruction=system_prompt
-        )
+            tools=[available_functions], system_instruction=SYSTEM_PROMPT
+        ),
     )
-    return resp
+    if verbose:
+        print("Prompt tokens:", response.usage_metadata.prompt_token_count)
+        print("Response tokens:", response.usage_metadata.candidates_token_count)
+
+    if response.candidates:
+        for candidate in response.candidates:
+            messages.append(candidate.content)
+
+    if not response.function_calls:
+        return response.text
+    
+
+    function_responses = []
+    for function_call_part in response.function_calls:
+        function_call_result = call_function(function_call_part, verbose)
+        if (
+            not function_call_result.parts
+            or not function_call_result.parts[0].function_response
+        ):
+            raise Exception("empty function call result")
+        if verbose:
+            print(f"-> {function_call_result.parts[0].function_response.response}")
+        function_responses.append(function_call_result.parts[0])
+
+    if not function_responses:
+        raise Exception("no function responses generated, exiting.")
+    
+    messages.append(
+        types.Content(role="tool", parts=function_responses)
+    )
 
 if __name__ == "__main__":
     main()

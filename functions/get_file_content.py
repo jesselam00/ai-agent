@@ -1,9 +1,8 @@
 import os
 from google.genai import types
+from config import MAX_CHARS
 
 def get_file_content(working_directory, file_path):
-    MAX_CHARS = 10000
-
     abs_working_dir = os.path.abspath(working_directory)
     target_fpath = os.path.abspath(os.path.join(working_directory, file_path))
     if not target_fpath.startswith(abs_working_dir):
