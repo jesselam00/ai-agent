@@ -3,7 +3,7 @@
 A toy AI coding assistant inspired by tools like **Claude Code** and **Cursor**, built using **Google's free Gemini API**. This CLI-based agent accepts coding tasks and intelligently chooses from a set of predefined tools to solve problems within a Python codebase.
 
 > "fix my calculator app, it's not starting correctly"
-> 💡 The agent scans files, reads content, writes updates, and executes Python scripts — all powered by LLM reasoning.
+> 💡 The agent scans files, reads content, writes updates, and executes Python scripts.
 
 ---
 
