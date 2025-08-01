@@ -4,7 +4,7 @@ A toy AI coding assistant inspired by tools like **Claude Code** and **Cursor**,
 
 > "fix my calculator app, it's not starting correctly"
 
-> 💡 The agent scans files, reads content, writes updates, and executes Python scripts.
+💡 The agent scans files, reads content, writes updates, and executes Python scripts.
 
 ---
 
